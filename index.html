@@ -15,7 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<style>html,body{margin:0;padding:0;}</style>
+<style>html,body{margin:0;padding:0;width:100%;overflow-x:hidden;}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -1305,6 +1305,8 @@ function App() {
       }}
     >
       <style>{`
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; overflow-x: hidden; }
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
         .shake { animation: shakeKf .4s; }
         @keyframes shakeKf {
