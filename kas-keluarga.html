@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kas Keluarga</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>html,body{margin:0;padding:0;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+/* ---- Shim penyimpanan: memakai localStorage browser biasa ---- */
+window.storage = {
+  get: (key) => new Promise((resolve, reject) => {
+    const raw = localStorage.getItem(key);
+    if (raw === null) { reject(new Error('not found')); return; }
+    resolve({ key, value: raw });
+  }),
+  set: (key, value) => new Promise((resolve) => {
+    localStorage.setItem(key, value);
+    resolve({ key, value });
+  }),
+};
+
+/* ---- Ikon inline pengganti lucide-react ---- */
+function Icon({ children, size = 18, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      {children}
+    </svg>
+  );
+}
+const Plus = (p) => <Icon {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
+const X = (p) => <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
+const ChevronLeft = (p) => <Icon {...p}><polyline points="15 18 9 12 15 6"/></Icon>;
+const ChevronRight = (p) => <Icon {...p}><polyline points="9 18 15 12 9 6"/></Icon>;
+const Pencil = (p) => <Icon {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></Icon>;
+const Trash2 = (p) => <Icon {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></Icon>;
+const LogOut = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></Icon>;
+const Delete = (p) => <Icon {...p}><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></Icon>;
+const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+
+/* ---------------------------------------------------------
+   Palet & konstanta
+--------------------------------------------------------- */
+const C = {
+  paper: '#FFFFFF',
+  card: '#F5F4FC',
+  ink: '#1F2547',
+  inkSoft: '#6B7099',
+  blue: '#2E3A8C',
+  blueSoft: '#3D4FAE',
+  purple: '#6D28D9',
+  income: '#2E3A8C',
+  expense: '#6D28D9',
+  hair: '#E1E1F5',
+  abi: '#2E3A8C',
+  umi: '#6D28D9',
+};
+
+const DEFAULT_PINS = { Abi: '1234', Umi: '5678' };
+
+const DEFAULT_CATEGORIES = {
+  masuk: ['Gaji', 'Bonus/THR', 'Usaha Sampingan', 'Lainnya'],
+  keluar: ['Belanja Dapur', 'Listrik & Air', 'Pendidikan', 'Kesehatan', 'Transportasi', 'Infaq/Sedekah', 'Cicilan', 'Lainnya'],
+};
+
+const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const HARI_PENDEK = ['M', 'S', 'S', 'R', 'K', 'J', 'S'];
+const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+/* ---------------------------------------------------------
+   Util
+--------------------------------------------------------- */
+const pad2 = (n) => String(n).padStart(2, '0');
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const parseDateStr = (s) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const formatRupiah = (n) => 'Rp' + (Number(n) || 0).toLocaleString('id-ID');
+const sumBy = (list, pred) => list.filter(pred).reduce((a, t) => a + t.jumlah, 0);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+async function sheetsGet(url) {
+  const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error('Format data dari Sheet tidak sesuai');
+  return data.map((row) => ({
+    id: String(row.id),
+    tanggal: String(row.tanggal),
+    jenis: row.jenis === 'masuk' ? 'masuk' : 'keluar',
+    kategori: row.kategori,
+    jumlah: Number(row.jumlah) || 0,
+    catatan: row.catatan || '',
+    oleh: row.oleh === 'Umi' ? 'Umi' : 'Abi',
+    dibuatPada: Number(row.dibuatPada) || 0,
+  }));
+}
+
+async function sheetsPost(url, payload) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (!data || data.ok !== true) throw new Error((data && data.error) || 'Gagal menyimpan ke Sheet');
+  return data;
+}
+
+function formatDateLong(dateStr) {
+  const d = parseDateStr(dateStr);
+  return `${HARI[d.getDay()]}, ${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/* ---------------------------------------------------------
+   Komponen kecil
+--------------------------------------------------------- */
+function UserTag({ user, size = 'sm' }) {
+  const color = user === 'Abi' ? C.abi : C.umi;
+  const cls = size === 'sm' ? 'text-[11px] px-2 py-0.5' : 'text-sm px-3 py-1';
+  return (
+    <span
+      className={`rounded-full font-medium ${cls}`}
+      style={{ backgroundColor: color + '1F', color, border: `1px solid ${color}55` }}
+    >
+      {user}
+    </span>
+  );
+}
+
+function PinDots({ length, filled }) {
+  return (
+    <div className="flex justify-center gap-3">
+      {Array.from({ length }).map((_, i) => (
+        <div
+          key={i}
+          className="w-3.5 h-3.5 rounded-full transition-colors"
+          style={{ backgroundColor: i < filled ? C.blue : 'transparent', border: `1.5px solid ${C.blue}` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PinPad({ onDigit, onBackspace }) {
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
+  return (
+    <div className="grid grid-cols-3 gap-3 w-full max-w-[240px] mx-auto">
+      {keys.map((k, i) => {
+        if (k === '') return <div key={i} />;
+        if (k === 'back') {
+          return (
+            <button
+              key={i}
+              onClick={onBackspace}
+              className="h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+              style={{ border: `1px solid ${C.hair}`, color: C.ink, backgroundColor: C.card }}
+            >
+              <Delete size={18} />
+            </button>
+          );
+        }
+        return (
+          <button
+            key={i}
+            onClick={() => onDigit(k)}
+            className="h-14 rounded-full text-lg active:scale-95 transition-transform"
+            style={{ border: `1px solid ${C.hair}`, color: C.ink, backgroundColor: C.card, fontFamily: "'Fraunces', serif" }}
+          >
+            {k}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Layar Kunci (pilih orang + PIN)
+--------------------------------------------------------- */
+function LockScreen({ pins, onUnlock }) {
+  const [selected, setSelected] = useState(null);
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleDigit = (d) => {
+    if (!selected || pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (next === pins[selected]) {
+          onUnlock(selected);
+        } else {
+          setError(true);
+          setTimeout(() => setError(false), 400);
+          setPin('');
+        }
+      }, 120);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[520px] px-6 py-10">
+      <div className="mb-8 text-center">
+        <div style={{ fontFamily: "'Fraunces', serif", color: C.blue }} className="text-3xl font-medium">
+          Kas Keluarga
+        </div>
+        <div className="text-sm mt-1" style={{ color: C.inkSoft }}>Catatan kas Abi &amp; Umi</div>
+      </div>
+
+      <div className="flex gap-3 mb-8">
+        {['Abi', 'Umi'].map((u) => {
+          const active = selected === u;
+          const color = u === 'Abi' ? C.abi : C.umi;
+          return (
+            <button
+              key={u}
+              onClick={() => { setSelected(u); setPin(''); }}
+              className="px-6 py-2.5 rounded-t-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: active ? color : C.card,
+                color: active ? '#fff' : color,
+                border: `1px solid ${color}`,
+                borderBottom: active ? `1px solid ${color}` : `1px solid ${C.hair}`,
+              }}
+            >
+              {u}
+            </button>
+          );
+        })}
+      </div>
+
+      {selected ? (
+        <div className={`w-full ${error ? 'shake' : ''}`}>
+          <div className="mb-6"><PinDots length={4} filled={pin.length} /></div>
+          {error && (
+            <div className="text-center text-sm mb-4" style={{ color: C.expense }}>PIN salah, coba lagi</div>
+          )}
+          <PinPad onDigit={handleDigit} onBackspace={() => setPin(pin.slice(0, -1))} />
+        </div>
+      ) : (
+        <div className="text-sm text-center max-w-[220px]" style={{ color: C.inkSoft }}>
+          Pilih siapa yang mau mencatat, lalu masukkan PIN.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Tab: Catat
+--------------------------------------------------------- */
+function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, cancelEdit, categories }) {
+  const [date, setDate] = useState(localDateStr());
+  const [type, setType] = useState('keluar');
+  const [category, setCategory] = useState(categories.keluar[0] || '');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [amountError, setAmountError] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  useEffect(() => {
+    if (editingTx) {
+      setDate(editingTx.tanggal);
+      setType(editingTx.jenis);
+      setCategory(editingTx.kategori);
+      setAmount(String(editingTx.jumlah));
+      setNote(editingTx.catatan || '');
+    }
+  }, [editingTx]);
+
+  // Jaga agar kategori terpilih selalu valid saat daftar kategori berubah (mis. diedit di Pengaturan)
+  useEffect(() => {
+    if (!categories[type].includes(category)) {
+      setCategory(categories[type][0] || '');
+    }
+  }, [categories, type]);
+
+  const changeType = (t) => {
+    setType(t);
+    if (!categories[t].includes(category)) setCategory(categories[t][0] || '');
+  };
+
+  const handleAmountChange = (e) => {
+    const digits = e.target.value.replace(/[^0-9]/g, '');
+    setAmount(digits);
+    setAmountError(false);
+  };
+
+  const submit = () => {
+    const num = Number(amount);
+    if (!num || num <= 0) { setAmountError(true); return; }
+    if (!category) return;
+    onSave({
+      id: editingTx ? editingTx.id : uid(),
+      tanggal: date,
+      jenis: type,
+      kategori: category,
+      jumlah: num,
+      catatan: note.trim(),
+      oleh: editingTx ? editingTx.oleh : user,
+      dibuatPada: editingTx ? editingTx.dibuatPada : Date.now(),
+    });
+    setAmount('');
+    setNote('');
+    if (editingTx) cancelEdit();
+  };
+
+  const todayList = useMemo(
+    () => transactions.filter((t) => t.tanggal === localDateStr()).sort((a, b) => b.dibuatPada - a.dibuatPada),
+    [transactions]
+  );
+
+  const amountColor = type === 'masuk' ? C.income : C.expense;
+
+  return (
+    <div className="px-4 pb-8">
+      {editingTx && (
+        <div className="flex items-center justify-between rounded-lg px-3 py-2 mb-4 text-sm" style={{ backgroundColor: C.purple + '22', color: C.ink }}>
+          <span>Mengedit catatan</span>
+          <button onClick={cancelEdit} className="flex items-center gap-1 text-xs" style={{ color: C.expense }}>
+            <X size={14} /> Batal
+          </button>
+        </div>
+      )}
+
+      {/* Segmented type toggle */}
+      <div className="flex gap-2 mb-4 mt-2">
+        {[
+          { key: 'masuk', label: 'Pemasukan' },
+          { key: 'keluar', label: 'Pengeluaran' },
+        ].map((opt) => {
+          const active = type === opt.key;
+          const color = opt.key === 'masuk' ? C.income : C.expense;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => changeType(opt.key)}
+              className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: active ? color : C.card,
+                color: active ? '#fff' : color,
+                border: `1px solid ${color}`,
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Amount */}
+      <div className="mb-4">
+        <label className="block text-xs mb-1" style={{ color: C.inkSoft }}>Jumlah</label>
+        <div
+          className="flex items-center rounded-lg px-3"
+          style={{ backgroundColor: C.card, border: `1px solid ${amountError ? C.expense : C.hair}` }}
+        >
+          <span className="text-2xl mr-1" style={{ fontFamily: "'Fraunces', serif", color: amountColor }}>Rp</span>
+          <input
+            inputMode="numeric"
+            value={amount ? Number(amount).toLocaleString('id-ID') : ''}
+            onChange={handleAmountChange}
+            placeholder="0"
+            className="flex-1 bg-transparent outline-none py-3 text-2xl"
+            style={{ fontFamily: "'Fraunces', serif", color: amountColor }}
+          />
+        </div>
+        {amountError && <div className="text-xs mt-1" style={{ color: C.expense }}>Masukkan jumlah lebih dari 0</div>}
+      </div>
+
+      {/* Category chips */}
+      <div className="mb-4">
+        <label className="block text-xs mb-2" style={{ color: C.inkSoft }}>Kategori</label>
+        {categories[type].length === 0 ? (
+          <div className="text-xs" style={{ color: C.inkSoft }}>Belum ada kategori. Tambahkan lewat Pengaturan &gt; Kelola Kategori.</div>
+        ) : (
+        <div className="flex flex-wrap gap-2">
+          {categories[type].map((cat) => {
+            const active = category === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategory(cat)}
+                className="px-3 py-1.5 rounded-full text-sm transition-colors"
+                style={{
+                  backgroundColor: active ? C.blue : C.card,
+                  color: active ? '#fff' : C.ink,
+                  border: `1px solid ${active ? C.blue : C.hair}`,
+                }}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+        )}
+      </div>
+
+      {/* Date & note */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-xs mb-1" style={{ color: C.inkSoft }}>Tanggal</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+          />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: C.inkSoft }}>Catatan (opsional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="mis. beli beras"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+          />
+        </div>
+      </div>
+
+      <button
+        onClick={submit}
+        className="w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
+        style={{ backgroundColor: C.blue, color: '#fff' }}
+      >
+        <Plus size={16} /> {editingTx ? 'Simpan Perubahan' : 'Simpan Catatan'}
+      </button>
+
+      {/* Today's list */}
+      <div className="mt-8">
+        <div className="text-sm font-medium mb-3" style={{ color: C.ink }}>Catatan Hari Ini</div>
+        {todayList.length === 0 ? (
+          <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
+            Belum ada catatan hari ini. Yuk catat transaksi pertama.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {todayList.map((t) => (
+              <TxRow
+                key={t.id}
+                t={t}
+                confirming={confirmDeleteId === t.id}
+                onEdit={() => onEdit(t)}
+                onDeleteClick={() => setConfirmDeleteId(t.id)}
+                onConfirmDelete={() => { onDelete(t.id); setConfirmDeleteId(null); }}
+                onCancelDelete={() => setConfirmDeleteId(null)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Baris transaksi (dipakai di beberapa tab)
+--------------------------------------------------------- */
+function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancelDelete }) {
+  const color = t.jenis === 'masuk' ? C.income : C.expense;
+  if (confirming) {
+    return (
+      <div className="flex items-center justify-between rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: C.expense + '14', border: `1px solid ${C.expense}55` }}>
+        <span style={{ color: C.ink }}>Hapus catatan ini?</span>
+        <div className="flex gap-2">
+          <button onClick={onConfirmDelete} className="px-3 py-1 rounded-md text-xs font-medium" style={{ backgroundColor: C.expense, color: '#fff' }}>Ya, hapus</button>
+          <button onClick={onCancelDelete} className="px-3 py-1 rounded-md text-xs" style={{ border: `1px solid ${C.hair}`, color: C.ink }}>Batal</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between rounded-lg px-4 py-3" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.kategori}</span>
+          <UserTag user={t.oleh} />
+        </div>
+        {t.catatan && <div className="text-xs mt-0.5 truncate" style={{ color: C.inkSoft }}>{t.catatan}</div>}
+      </div>
+      <div className="flex items-center gap-3 ml-3">
+        <span className="text-sm font-medium whitespace-nowrap" style={{ color, fontFamily: "'Fraunces', serif" }}>
+          {t.jenis === 'masuk' ? '+' : '-'}{formatRupiah(t.jumlah)}
+        </span>
+        <button onClick={onEdit} style={{ color: C.inkSoft }}><Pencil size={14} /></button>
+        <button onClick={onDeleteClick} style={{ color: C.inkSoft }}><Trash2 size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
+function FilterChips({ value, onChange }) {
+  return (
+    <div className="flex gap-2 mb-4">
+      {['Gabungan', 'Abi', 'Umi'].map((f) => {
+        const active = value === f;
+        const color = f === 'Abi' ? C.abi : f === 'Umi' ? C.umi : C.blue;
+        return (
+          <button
+            key={f}
+            onClick={() => onChange(f)}
+            className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+            style={{ backgroundColor: active ? color : C.card, color: active ? '#fff' : color, border: `1px solid ${color}` }}
+          >
+            {f}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SummaryBar({ masuk, keluar }) {
+  const saldo = masuk - keluar;
+  return (
+    <div className="grid grid-cols-3 gap-2 mb-5">
+      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+        <div className="text-[10px] mb-0.5" style={{ color: C.inkSoft }}>Masuk</div>
+        <div className="text-sm font-medium" style={{ color: C.income, fontFamily: "'Fraunces', serif" }}>{formatRupiah(masuk)}</div>
+      </div>
+      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+        <div className="text-[10px] mb-0.5" style={{ color: C.inkSoft }}>Keluar</div>
+        <div className="text-sm font-medium" style={{ color: C.expense, fontFamily: "'Fraunces', serif" }}>{formatRupiah(keluar)}</div>
+      </div>
+      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.blue }}>
+        <div className="text-[10px] mb-0.5 text-white opacity-70">Selisih</div>
+        <div className="text-sm font-medium text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(saldo)}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Tab: Rekap Harian
+--------------------------------------------------------- */
+function HarianTab({ transactions, onEdit, onDelete, date, setDate }) {
+  const [filter, setFilter] = useState('Gabungan');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const shiftDay = (delta) => {
+    const d = parseDateStr(date);
+    d.setDate(d.getDate() + delta);
+    setDate(localDateStr(d));
+  };
+
+  const list = useMemo(() => {
+    return transactions
+      .filter((t) => t.tanggal === date && (filter === 'Gabungan' || t.oleh === filter))
+      .sort((a, b) => b.dibuatPada - a.dibuatPada);
+  }, [transactions, date, filter]);
+
+  const masuk = sumBy(list, (t) => t.jenis === 'masuk');
+  const keluar = sumBy(list, (t) => t.jenis === 'keluar');
+
+  return (
+    <div className="px-4 pb-8">
+      <div className="flex items-center justify-between mb-1 mt-2">
+        <button onClick={() => shiftDay(-1)} className="p-2" style={{ color: C.blue }}><ChevronLeft size={18} /></button>
+        <div className="text-center">
+          <div className="text-sm font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>{formatDateLong(date)}</div>
+        </div>
+        <button onClick={() => shiftDay(1)} className="p-2" style={{ color: C.blue }}><ChevronRight size={18} /></button>
+      </div>
+      <div className="flex justify-center mb-4">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="text-xs rounded-md px-2 py-1 outline-none"
+          style={{ border: `1px solid ${C.hair}`, color: C.inkSoft, backgroundColor: C.card }}
+        />
+      </div>
+
+      <FilterChips value={filter} onChange={setFilter} />
+      <SummaryBar masuk={masuk} keluar={keluar} />
+
+      {list.length === 0 ? (
+        <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
+          Tidak ada catatan pada tanggal ini.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((t) => (
+            <TxRow
+              key={t.id}
+              t={t}
+              confirming={confirmDeleteId === t.id}
+              onEdit={() => onEdit(t)}
+              onDeleteClick={() => setConfirmDeleteId(t.id)}
+              onConfirmDelete={() => { onDelete(t.id); setConfirmDeleteId(null); }}
+              onCancelDelete={() => setConfirmDeleteId(null)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Kalender titik (hero Bulanan)
+--------------------------------------------------------- */
+function MonthCalendar({ year, month, transactions, filter, onPickDay }) {
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const todayStr = localDateStr();
+
+  const netFor = (day) => {
+    const ds = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+    const dayTx = transactions.filter((t) => t.tanggal === ds && (filter === 'Gabungan' || t.oleh === filter));
+    if (dayTx.length === 0) return null;
+    return sumBy(dayTx, (t) => t.jenis === 'masuk') - sumBy(dayTx, (t) => t.jenis === 'keluar');
+  };
+
+  return (
+    <div className="rounded-lg p-3 mb-5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="grid grid-cols-7 mb-1">
+        {HARI_PENDEK.map((h, i) => (
+          <div key={i} className="text-center text-[10px]" style={{ color: C.inkSoft }}>{h}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-y-1.5">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />;
+          const ds = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+          const net = netFor(day);
+          const isToday = ds === todayStr;
+          let dotColor = 'transparent';
+          if (net !== null) dotColor = net > 0 ? C.income : net < 0 ? C.expense : C.purple;
+          return (
+            <button
+              key={i}
+              onClick={() => onPickDay(ds)}
+              className="flex flex-col items-center py-1 rounded-md"
+              style={{ backgroundColor: isToday ? C.blue + '14' : 'transparent' }}
+            >
+              <span className="text-[11px]" style={{ color: isToday ? C.blue : C.ink, fontWeight: isToday ? 600 : 400 }}>{day}</span>
+              <span className="w-1.5 h-1.5 rounded-full mt-0.5" style={{ backgroundColor: dotColor }} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BreakdownList({ title, items, color }) {
+  if (items.length === 0) return null;
+  const max = Math.max(...items.map((i) => i.value));
+  return (
+    <div className="mb-5">
+      <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>{title}</div>
+      <div className="space-y-2">
+        {items.map((i) => (
+          <div key={i.label}>
+            <div className="flex justify-between text-xs mb-1">
+              <span style={{ color: C.ink }}>{i.label}</span>
+              <span style={{ color: C.inkSoft }}>{formatRupiah(i.value)}</span>
+            </div>
+            <div className="h-1.5 rounded-full" style={{ backgroundColor: C.hair + '80' }}>
+              <div className="h-1.5 rounded-full" style={{ width: `${(i.value / max) * 100}%`, backgroundColor: color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ContributionBar({ label, abiVal, umiVal }) {
+  const total = abiVal + umiVal;
+  const abiPct = total > 0 ? (abiVal / total) * 100 : 50;
+  const umiPct = 100 - abiPct;
+  return (
+    <div className="mb-3">
+      <div className="text-xs mb-1" style={{ color: C.inkSoft }}>{label}</div>
+      <div className="flex h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: C.hair + '80' }}>
+        {abiVal > 0 && <div style={{ width: `${abiPct}%`, backgroundColor: C.abi }} />}
+        {umiVal > 0 && <div style={{ width: `${umiPct}%`, backgroundColor: C.umi }} />}
+      </div>
+      <div className="flex justify-between text-[11px] mt-1">
+        <span style={{ color: C.abi }}>Abi {formatRupiah(abiVal)}</span>
+        <span style={{ color: C.umi }}>Umi {formatRupiah(umiVal)}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Tab: Rekap Bulanan
+--------------------------------------------------------- */
+function BulananTab({ transactions, onPickDay }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+  const [filter, setFilter] = useState('Gabungan');
+
+  const shiftMonth = (delta) => {
+    let m = month + delta, y = year;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    setMonth(m); setYear(y);
+  };
+
+  const monthStr = `${year}-${pad2(month + 1)}`;
+  const list = useMemo(
+    () => transactions.filter((t) => t.tanggal.slice(0, 7) === monthStr && (filter === 'Gabungan' || t.oleh === filter)),
+    [transactions, monthStr, filter]
+  );
+
+  const masuk = sumBy(list, (t) => t.jenis === 'masuk');
+  const keluar = sumBy(list, (t) => t.jenis === 'keluar');
+
+  const groupByCategory = (jenis) => {
+    const map = {};
+    list.filter((t) => t.jenis === jenis).forEach((t) => {
+      map[t.kategori] = (map[t.kategori] || 0) + t.jumlah;
+    });
+    return Object.entries(map)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  const pengeluaranBreakdown = groupByCategory('keluar');
+  const pemasukanBreakdown = groupByCategory('masuk');
+
+  const monthAll = useMemo(
+    () => transactions.filter((t) => t.tanggal.slice(0, 7) === monthStr),
+    [transactions, monthStr]
+  );
+  const abiMasuk = sumBy(monthAll, (t) => t.jenis === 'masuk' && t.oleh === 'Abi');
+  const umiMasuk = sumBy(monthAll, (t) => t.jenis === 'masuk' && t.oleh === 'Umi');
+  const abiKeluar = sumBy(monthAll, (t) => t.jenis === 'keluar' && t.oleh === 'Abi');
+  const umiKeluar = sumBy(monthAll, (t) => t.jenis === 'keluar' && t.oleh === 'Umi');
+
+  return (
+    <div className="px-4 pb-8">
+      <div className="flex items-center justify-between mb-4 mt-2">
+        <button onClick={() => shiftMonth(-1)} className="p-2" style={{ color: C.blue }}><ChevronLeft size={18} /></button>
+        <div className="text-base font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>{BULAN[month]} {year}</div>
+        <button onClick={() => shiftMonth(1)} className="p-2" style={{ color: C.blue }}><ChevronRight size={18} /></button>
+      </div>
+
+      <FilterChips value={filter} onChange={setFilter} />
+
+      <MonthCalendar year={year} month={month} transactions={transactions} filter={filter} onPickDay={onPickDay} />
+
+      <SummaryBar masuk={masuk} keluar={keluar} />
+
+      {filter === 'Gabungan' && (monthAll.length > 0) && (
+        <div className="rounded-lg p-3 mb-5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+          <div className="text-xs font-medium mb-3" style={{ color: C.inkSoft }}>Kontribusi Abi &amp; Umi</div>
+          <ContributionBar label="Pemasukan" abiVal={abiMasuk} umiVal={umiMasuk} />
+          <ContributionBar label="Pengeluaran" abiVal={abiKeluar} umiVal={umiKeluar} />
+        </div>
+      )}
+
+      <BreakdownList title="Rincian Pengeluaran" items={pengeluaranBreakdown} color={C.expense} />
+      <BreakdownList title="Rincian Pemasukan" items={pemasukanBreakdown} color={C.income} />
+
+      {list.length === 0 && (
+        <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
+          Belum ada catatan pada bulan ini.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Panel Pengaturan
+--------------------------------------------------------- */
+const SYNC_LABEL = {
+  connected: { text: 'Tersambung ke Google Sheet', color: 'income' },
+  syncing: { text: 'Menyinkronkan...', color: 'purple' },
+  error: { text: 'Gagal menyambung / menyinkron', color: 'expense' },
+  local: { text: 'Memakai penyimpanan lokal artifact', color: 'inkSoft' },
+};
+
+function DataSourceSection({ sheetUrl, syncStatus, syncMsg, onConnectSheet, onDisconnectSheet, onPullFromSheet, onPushToSheet }) {
+  const [urlInput, setUrlInput] = useState(sheetUrl || '');
+  const label = SYNC_LABEL[syncStatus] || SYNC_LABEL.local;
+
+  return (
+    <div className="mb-6">
+      <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Sumber Data</div>
+      <div className="flex items-center gap-2 mb-3 text-xs">
+        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: C[label.color] }} />
+        <span style={{ color: C.ink }}>{label.text}</span>
+      </div>
+      {syncMsg && (
+        <div className="text-xs mb-3" style={{ color: syncStatus === 'error' ? C.expense : C.inkSoft }}>{syncMsg}</div>
+      )}
+      <input
+        type="text"
+        value={urlInput}
+        onChange={(e) => setUrlInput(e.target.value)}
+        placeholder="Tempel URL Web App Google Apps Script..."
+        className="w-full rounded-lg px-3 py-2 text-xs outline-none mb-2"
+        style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onConnectSheet(urlInput.trim())}
+          disabled={!urlInput.trim()}
+          className="px-3 py-1.5 rounded-md text-xs font-medium"
+          style={{ backgroundColor: C.blue, color: '#fff', opacity: urlInput.trim() ? 1 : 0.5 }}
+        >
+          Sambungkan &amp; Tarik Data
+        </button>
+        {sheetUrl && (
+          <>
+            <button onClick={onPullFromSheet} className="px-3 py-1.5 rounded-md text-xs" style={{ border: `1px solid ${C.hair}`, color: C.ink }}>
+              Tarik dari Sheet
+            </button>
+            <button onClick={onPushToSheet} className="px-3 py-1.5 rounded-md text-xs" style={{ border: `1px solid ${C.hair}`, color: C.ink }}>
+              Kirim ke Sheet
+            </button>
+            <button onClick={onDisconnectSheet} className="px-3 py-1.5 rounded-md text-xs" style={{ color: C.expense }}>
+              Putuskan
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CategoryManager({ categories, onSave }) {
+  const [type, setType] = useState('keluar');
+  const [newCat, setNewCat] = useState('');
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [error, setError] = useState('');
+
+  const list = categories[type];
+
+  const addCategory = () => {
+    const val = newCat.trim();
+    if (!val) return;
+    if (list.some((c) => c.toLowerCase() === val.toLowerCase())) { setError('Kategori sudah ada.'); return; }
+    onSave({ ...categories, [type]: [...list, val] });
+    setNewCat('');
+    setError('');
+  };
+
+  const startEdit = (i) => {
+    setEditingIndex(i);
+    setEditValue(list[i]);
+    setError('');
+  };
+
+  const saveEdit = () => {
+    const val = editValue.trim();
+    if (!val) return;
+    if (list.some((c, i) => i !== editingIndex && c.toLowerCase() === val.toLowerCase())) {
+      setError('Nama kategori sudah dipakai.');
+      return;
+    }
+    const next = [...list];
+    next[editingIndex] = val;
+    onSave({ ...categories, [type]: next });
+    setEditingIndex(null);
+    setError('');
+  };
+
+  const deleteCategory = (i) => {
+    if (list.length <= 1) { setError('Minimal harus ada 1 kategori.'); return; }
+    onSave({ ...categories, [type]: list.filter((_, idx) => idx !== i) });
+    setError('');
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Kelola Kategori</div>
+      <div className="flex gap-2 mb-3">
+        {[{ k: 'keluar', l: 'Pengeluaran' }, { k: 'masuk', l: 'Pemasukan' }].map((opt) => (
+          <button
+            key={opt.k}
+            onClick={() => { setType(opt.k); setEditingIndex(null); setError(''); }}
+            className="px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: type === opt.k ? C.blue : C.card,
+              color: type === opt.k ? '#fff' : C.blue,
+              border: `1px solid ${C.blue}`,
+            }}
+          >
+            {opt.l}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2 mb-3">
+        {list.length === 0 && (
+          <div className="text-xs" style={{ color: C.inkSoft }}>Belum ada kategori untuk jenis ini.</div>
+        )}
+        {list.map((cat, i) => (
+          <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+            {editingIndex === i ? (
+              <input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }}
+                className="flex-1 bg-transparent outline-none text-sm mr-2"
+                style={{ color: C.ink }}
+              />
+            ) : (
+              <span className="text-sm" style={{ color: C.ink }}>{cat}</span>
+            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {editingIndex === i ? (
+                <>
+                  <button onClick={saveEdit} className="text-xs font-medium" style={{ color: C.blue }}>Simpan</button>
+                  <button onClick={() => { setEditingIndex(null); setError(''); }} className="text-xs" style={{ color: C.inkSoft }}>Batal</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => startEdit(i)} style={{ color: C.inkSoft }}><Pencil size={13} /></button>
+                  <button onClick={() => deleteCategory(i)} style={{ color: C.inkSoft }}><Trash2 size={13} /></button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div className="text-xs mb-2" style={{ color: C.purple }}>{error}</div>}
+
+      <div className="flex gap-2">
+        <input
+          value={newCat}
+          onChange={(e) => { setNewCat(e.target.value); setError(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }}
+          placeholder="Kategori baru..."
+          className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+        />
+        <button onClick={addCategory} className="px-3 py-2 rounded-lg text-xs font-medium" style={{ backgroundColor: C.blue, color: '#fff' }}>
+          Tambah
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncStatus, syncMsg, onConnectSheet, onDisconnectSheet, onPullFromSheet, onPushToSheet, categories, onSaveCategories }) {
+  const [who, setWho] = useState('Abi');
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const submit = () => {
+    if (oldPin !== pins[who]) { setMsg({ type: 'err', text: 'PIN lama salah.' }); return; }
+    if (!/^\d{4}$/.test(newPin)) { setMsg({ type: 'err', text: 'PIN baru harus 4 digit angka.' }); return; }
+    if (newPin !== confirmPin) { setMsg({ type: 'err', text: 'Konfirmasi PIN tidak cocok.' }); return; }
+    onChangePin(who, newPin);
+    setMsg({ type: 'ok', text: 'PIN berhasil diubah.' });
+    setOldPin(''); setNewPin(''); setConfirmPin('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end justify-center" style={{ backgroundColor: '#00000055' }}>
+      <div className="w-full max-w-md rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto" style={{ backgroundColor: C.paper }}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-base font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>Pengaturan</div>
+          <button onClick={onClose} style={{ color: C.inkSoft }}><X size={20} /></button>
+        </div>
+
+        <DataSourceSection
+          sheetUrl={sheetUrl}
+          syncStatus={syncStatus}
+          syncMsg={syncMsg}
+          onConnectSheet={onConnectSheet}
+          onDisconnectSheet={onDisconnectSheet}
+          onPullFromSheet={onPullFromSheet}
+          onPushToSheet={onPushToSheet}
+        />
+
+        <CategoryManager categories={categories} onSave={onSaveCategories} />
+
+        <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Ubah PIN</div>
+        <div className="flex gap-2 mb-3">
+          {['Abi', 'Umi'].map((u) => (
+            <button
+              key={u}
+              onClick={() => { setWho(u); setMsg(null); }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{
+                backgroundColor: who === u ? (u === 'Abi' ? C.abi : C.umi) : C.card,
+                color: who === u ? '#fff' : C.ink,
+                border: `1px solid ${C.hair}`,
+              }}
+            >
+              {u}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-2 mb-3">
+          <input type="password" inputMode="numeric" maxLength={4} placeholder="PIN lama" value={oldPin}
+            onChange={(e) => setOldPin(e.target.value.replace(/\D/g, ''))}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }} />
+          <input type="password" inputMode="numeric" maxLength={4} placeholder="PIN baru (4 digit)" value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }} />
+          <input type="password" inputMode="numeric" maxLength={4} placeholder="Ulangi PIN baru" value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }} />
+        </div>
+        {msg && <div className="text-xs mb-3" style={{ color: msg.type === 'ok' ? C.income : C.expense }}>{msg.text}</div>}
+        <button onClick={submit} className="w-full py-2.5 rounded-lg text-sm font-medium mb-6" style={{ backgroundColor: C.blue, color: '#fff' }}>
+          Simpan PIN Baru
+        </button>
+
+        <div className="pt-4" style={{ borderTop: `1px solid ${C.hair}` }}>
+          <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Zona Berbahaya</div>
+          {!confirmClear ? (
+            <button onClick={() => setConfirmClear(true)} className="text-xs" style={{ color: C.expense }}>
+              Hapus semua catatan keuangan
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: C.ink }}>Yakin? Semua catatan akan hilang.</span>
+              <button onClick={() => { onClearAll(); setConfirmClear(false); }} className="px-2 py-1 rounded-md text-xs font-medium" style={{ backgroundColor: C.expense, color: '#fff' }}>Hapus</button>
+              <button onClick={() => setConfirmClear(false)} className="px-2 py-1 rounded-md text-xs" style={{ border: `1px solid ${C.hair}` }}>Batal</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   App utama
+--------------------------------------------------------- */
+function App() {
+  const [loading, setLoading] = useState(true);
+  const [pins, setPins] = useState(DEFAULT_PINS);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [transactions, setTransactions] = useState([]);
+  const [loggedInUser, setLoggedInUser] = useState(null);
+  const [tab, setTab] = useState('catat');
+  const [editingTx, setEditingTx] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [harianDate, setHarianDate] = useState(localDateStr());
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [syncStatus, setSyncStatus] = useState('local');
+  const [syncMsg, setSyncMsg] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let url = '';
+      try {
+        const res = await window.storage.get('sheet_url', true);
+        url = res ? res.value : '';
+      } catch (e) { url = ''; }
+      if (!cancelled) setSheetUrl(url);
+
+      let cached = [];
+      try {
+        const res = await window.storage.get('transactions', true);
+        cached = res ? JSON.parse(res.value) : [];
+      } catch (e) { cached = []; }
+      if (!cancelled) setTransactions(cached);
+
+      if (url) {
+        try {
+          const remote = await sheetsGet(url);
+          if (!cancelled) {
+            setTransactions(remote);
+            setSyncStatus('connected');
+            try { await window.storage.set('transactions', JSON.stringify(remote), true); } catch (e) {}
+          }
+        } catch (e) {
+          if (!cancelled) { setSyncStatus('error'); setSyncMsg('Gagal memuat dari Google Sheet, memakai data lokal sementara.'); }
+        }
+      }
+
+      try {
+        const res = await window.storage.get('pins', true);
+        if (!cancelled) setPins(res ? JSON.parse(res.value) : DEFAULT_PINS);
+      } catch (e) { if (!cancelled) setPins(DEFAULT_PINS); }
+
+      try {
+        const res = await window.storage.get('categories', true);
+        if (!cancelled) setCategories(res ? JSON.parse(res.value) : DEFAULT_CATEGORIES);
+      } catch (e) { if (!cancelled) setCategories(DEFAULT_CATEGORIES); }
+
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistCategories = useCallback(async (next) => {
+    setCategories(next);
+    try { await window.storage.set('categories', JSON.stringify(next), true); } catch (e) {}
+  }, []);
+
+  const persistTransactions = useCallback(async (next) => {
+    setTransactions(next);
+    try { await window.storage.set('transactions', JSON.stringify(next), true); } catch (e) {}
+    if (sheetUrl) {
+      setSyncStatus('syncing');
+      try {
+        await sheetsPost(sheetUrl, { action: 'replaceAll', items: next });
+        setSyncStatus('connected');
+        setSyncMsg(null);
+      } catch (e) {
+        setSyncStatus('error');
+        setSyncMsg('Gagal menyimpan ke Google Sheet. Perubahan tersimpan lokal saja — coba "Kirim ke Sheet" di Pengaturan.');
+      }
+    }
+  }, [sheetUrl]);
+
+  const handleConnectSheet = async (url) => {
+    if (!url) return;
+    setSyncStatus('syncing');
+    setSyncMsg(null);
+    try {
+      const remote = await sheetsGet(url);
+      setSheetUrl(url);
+      try { await window.storage.set('sheet_url', url, true); } catch (e) {}
+      setTransactions(remote);
+      try { await window.storage.set('transactions', JSON.stringify(remote), true); } catch (e) {}
+      setSyncStatus('connected');
+      setSyncMsg('Berhasil tersambung ke Google Sheet.');
+    } catch (e) {
+      setSyncStatus('error');
+      setSyncMsg('Gagal menyambung. Pastikan URL Web App benar dan akses deployment diset "Anyone".');
+    }
+  };
+
+  const handleDisconnectSheet = async () => {
+    setSheetUrl('');
+    try { await window.storage.set('sheet_url', '', true); } catch (e) {}
+    setSyncStatus('local');
+    setSyncMsg('Kembali memakai penyimpanan lokal artifact.');
+  };
+
+  const handlePullFromSheet = async () => {
+    if (!sheetUrl) return;
+    setSyncStatus('syncing');
+    try {
+      const remote = await sheetsGet(sheetUrl);
+      setTransactions(remote);
+      try { await window.storage.set('transactions', JSON.stringify(remote), true); } catch (e) {}
+      setSyncStatus('connected');
+      setSyncMsg('Data terbaru berhasil ditarik dari Google Sheet.');
+    } catch (e) {
+      setSyncStatus('error');
+      setSyncMsg('Gagal menarik data dari Google Sheet.');
+    }
+  };
+
+  const handlePushToSheet = async () => {
+    if (!sheetUrl) return;
+    setSyncStatus('syncing');
+    try {
+      await sheetsPost(sheetUrl, { action: 'replaceAll', items: transactions });
+      setSyncStatus('connected');
+      setSyncMsg('Data lokal berhasil dikirim ke Google Sheet.');
+    } catch (e) {
+      setSyncStatus('error');
+      setSyncMsg('Gagal mengirim data ke Google Sheet.');
+    }
+  };
+
+  const persistPins = useCallback(async (next) => {
+    setPins(next);
+    try { await window.storage.set('pins', JSON.stringify(next), true); } catch (e) {}
+  }, []);
+
+  const handleSaveTx = (tx) => {
+    const exists = transactions.some((t) => t.id === tx.id);
+    const next = exists ? transactions.map((t) => (t.id === tx.id ? tx : t)) : [...transactions, tx];
+    persistTransactions(next);
+    setEditingTx(null);
+  };
+
+  const handleDeleteTx = (id) => persistTransactions(transactions.filter((t) => t.id !== id));
+
+  const handleChangePin = (who, val) => persistPins({ ...pins, [who]: val });
+  const handleClearAll = () => persistTransactions([]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]" style={{ backgroundColor: C.paper, color: C.inkSoft, fontFamily: "'Fraunces', serif" }}>
+        Membuka buku kas...
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-h-[560px] w-full"
+      style={{
+        backgroundColor: C.paper,
+        backgroundImage: `repeating-linear-gradient(to bottom, transparent, transparent 27px, ${C.hair}55 28px)`,
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+        .shake { animation: shakeKf .4s; }
+        @keyframes shakeKf {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+      `}</style>
+
+      <div className="max-w-md mx-auto">
+        {!loggedInUser ? (
+          <LockScreen pins={pins} onUnlock={setLoggedInUser} />
+        ) : (
+          <>
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-5 py-4"
+              style={{ backgroundColor: C.blue }}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: '#FFFFFF22' }}
+                >
+                  <span className="text-white text-lg" style={{ fontFamily: "'Fraunces', serif" }}>K</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-base font-medium leading-tight text-white truncate" style={{ fontFamily: "'Fraunces', serif" }}>
+                      Kas Keluarga
+                    </div>
+                    {syncStatus !== 'local' && (
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`}
+                        title={SYNC_LABEL[syncStatus] ? SYNC_LABEL[syncStatus].text : ''}
+                        style={{
+                          backgroundColor: syncStatus === 'error' ? 'transparent' : '#FFFFFF',
+                          border: syncStatus === 'error' ? '1.5px solid #FFFFFF' : 'none',
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="text-[11px] text-white mt-0.5" style={{ opacity: 0.7 }}>
+                    Catatan Keuangan Rumah Tangga
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span
+                  className="text-xs font-medium px-3 py-1.5 rounded-full text-white mr-1"
+                  style={{ backgroundColor: '#FFFFFF22' }}
+                >
+                  {loggedInUser}
+                </span>
+                <button onClick={() => setShowSettings(true)} className="p-1.5 rounded-lg text-white" style={{ opacity: 0.9 }}><Settings size={18} /></button>
+                <button onClick={() => { setLoggedInUser(null); setTab('catat'); setEditingTx(null); }} className="p-1.5 rounded-lg text-white" style={{ opacity: 0.9 }}><LogOut size={18} /></button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex px-4 gap-1 mb-2 pt-2" style={{ backgroundColor: C.paper, borderBottom: `1px solid ${C.hair}` }}>
+              {[
+                { key: 'catat', label: 'Catat' },
+                { key: 'harian', label: 'Rekap Harian' },
+                { key: 'bulanan', label: 'Rekap Bulanan' },
+              ].map((t) => {
+                const active = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => { setTab(t.key); if (t.key !== 'catat') setEditingTx(null); }}
+                    className="flex-1 py-2.5 text-xs font-medium rounded-t-lg transition-colors"
+                    style={{
+                      backgroundColor: active ? C.card : 'transparent',
+                      color: active ? C.blue : C.inkSoft,
+                      borderBottom: active ? `2px solid ${C.blue}` : `2px solid transparent`,
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {tab === 'catat' && (
+              <CatatTab
+                user={loggedInUser}
+                transactions={transactions}
+                onSave={handleSaveTx}
+                onEdit={(t) => setEditingTx(t)}
+                onDelete={handleDeleteTx}
+                editingTx={editingTx}
+                cancelEdit={() => setEditingTx(null)}
+                categories={categories}
+              />
+            )}
+            {tab === 'harian' && (
+              <HarianTab
+                transactions={transactions}
+                onEdit={(t) => { setEditingTx(t); setTab('catat'); }}
+                onDelete={handleDeleteTx}
+                date={harianDate}
+                setDate={setHarianDate}
+              />
+            )}
+            {tab === 'bulanan' && (
+              <BulananTab
+                transactions={transactions}
+                onPickDay={(ds) => { setHarianDate(ds); setTab('harian'); }}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {showSettings && (
+        <SettingsSheet
+          pins={pins}
+          onChangePin={handleChangePin}
+          onClearAll={handleClearAll}
+          onClose={() => setShowSettings(false)}
+          sheetUrl={sheetUrl}
+          syncStatus={syncStatus}
+          syncMsg={syncMsg}
+          onConnectSheet={handleConnectSheet}
+          onDisconnectSheet={handleDisconnectSheet}
+          onPullFromSheet={handlePullFromSheet}
+          onPushToSheet={handlePushToSheet}
+          categories={categories}
+          onSaveCategories={persistCategories}
+        />
+      )}
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
