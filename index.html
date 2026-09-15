@@ -65,8 +65,9 @@ const C = {
   blue: '#2E3A8C',
   blueSoft: '#3D4FAE',
   purple: '#6D28D9',
+  red: '#DC2626',
   income: '#2E3A8C',
-  expense: '#6D28D9',
+  expense: '#DC2626',
   hair: '#E1E1F5',
   abi: '#2E3A8C',
   umi: '#6D28D9',
@@ -665,7 +666,7 @@ function MonthCalendar({ year, month, transactions, filter, onPickDay }) {
           const net = netFor(day);
           const isToday = ds === todayStr;
           let dotColor = 'transparent';
-          if (net !== null) dotColor = net > 0 ? C.income : net < 0 ? C.expense : C.purple;
+          if (net !== null) dotColor = net > 0 ? C.income : net < 0 ? C.expense : C.inkSoft;
           return (
             <button
               key={i}
@@ -964,7 +965,7 @@ function CategoryManager({ categories, onSave }) {
         ))}
       </div>
 
-      {error && <div className="text-xs mb-2" style={{ color: C.purple }}>{error}</div>}
+      {error && <div className="text-xs mb-2" style={{ color: C.expense }}>{error}</div>}
 
       <div className="flex gap-2">
         <input
@@ -1001,7 +1002,7 @@ function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncS
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center" style={{ backgroundColor: '#00000055' }}>
+    <div className="absolute inset-0 z-30 flex items-end justify-center" style={{ backgroundColor: '#00000055' }}>
       <div className="w-full max-w-md rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto" style={{ backgroundColor: C.paper }}>
         <div className="flex items-center justify-between mb-4">
           <div className="text-base font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>Pengaturan</div>
@@ -1315,7 +1316,7 @@ function App() {
         input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
       `}</style>
 
-      <div className="max-w-md mx-auto">
+      <div className="max-w-md mx-auto relative min-h-[560px]">
         {!loggedInUser ? (
           <LockScreen pins={pins} onUnlock={setLoggedInUser} />
         ) : (
@@ -1333,20 +1334,8 @@ function App() {
                   <span className="text-white text-lg" style={{ fontFamily: "'Fraunces', serif" }}>K</span>
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <div className="text-base font-medium leading-tight text-white truncate" style={{ fontFamily: "'Fraunces', serif" }}>
-                      Kas Keluarga
-                    </div>
-                    {syncStatus !== 'local' && (
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`}
-                        title={SYNC_LABEL[syncStatus] ? SYNC_LABEL[syncStatus].text : ''}
-                        style={{
-                          backgroundColor: syncStatus === 'error' ? 'transparent' : '#FFFFFF',
-                          border: syncStatus === 'error' ? '1.5px solid #FFFFFF' : 'none',
-                        }}
-                      />
-                    )}
+                  <div className="text-base font-medium leading-tight text-white truncate" style={{ fontFamily: "'Fraunces', serif" }}>
+                    Kas Keluarga
                   </div>
                   <div className="text-[11px] text-white mt-0.5" style={{ opacity: 0.7 }}>
                     Catatan Keuangan Rumah Tangga
