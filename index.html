@@ -66,7 +66,8 @@ const C = {
   blueSoft: '#3D4FAE',
   purple: '#6D28D9',
   red: '#DC2626',
-  income: '#2E3A8C',
+  green: '#15803D',
+  income: '#15803D',
   expense: '#DC2626',
   hair: '#E1E1F5',
   abi: '#2E3A8C',
@@ -829,7 +830,12 @@ function DataSourceSection({ sheetUrl, syncStatus, syncMsg, onConnectSheet, onDi
         <span style={{ color: C.ink }}>{label.text}</span>
       </div>
       {syncMsg && (
-        <div className="text-xs mb-3" style={{ color: syncStatus === 'error' ? C.expense : C.inkSoft }}>{syncMsg}</div>
+        <div
+          className="text-xs mb-3"
+          style={{ color: syncStatus === 'error' ? C.expense : syncStatus === 'connected' ? C.income : C.inkSoft }}
+        >
+          {syncMsg}
+        </div>
       )}
       <input
         type="text"
