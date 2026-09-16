@@ -101,6 +101,8 @@ const formatRupiah = (n) => {
 const sumBy = (list, pred) => list.filter(pred).reduce((a, t) => a + t.jumlah, 0);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+const SETTINGS_KEYS = ['pins', 'categories', 'budgets', 'recurring', 'goals'];
+
 async function sheetsGet(url) {
   const res = await fetch(url, { method: 'GET', redirect: 'follow' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -119,10 +121,12 @@ async function sheetsGet(url) {
     dibuatPada: Number(row.dibuatPada) || 0,
   }));
 
-  const pins = (!Array.isArray(data) && data.pins) ? data.pins : null;
-  const categories = (!Array.isArray(data) && data.categories) ? data.categories : null;
+  const result = { transactions };
+  SETTINGS_KEYS.forEach((k) => {
+    result[k] = (!Array.isArray(data) && data[k]) ? data[k] : null;
+  });
 
-  return { transactions, pins, categories };
+  return result;
 }
 
 async function sheetsPost(url, payload) {
@@ -138,9 +142,10 @@ async function sheetsPost(url, payload) {
   return data;
 }
 
-async function sheetsPostSettings(url, { pins, categories } = {}) {
-  return sheetsPost(url, { action: 'saveSettings', pins, categories });
+async function sheetsPostSettings(url, settings = {}) {
+  return sheetsPost(url, { action: 'saveSettings', ...settings });
 }
+
 
 function formatDateLong(dateStr) {
   const d = parseDateStr(dateStr);
@@ -286,7 +291,7 @@ function LockScreen({ pins, onUnlock }) {
 /* ---------------------------------------------------------
    Tab: Catat
 --------------------------------------------------------- */
-function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, cancelEdit, categories }) {
+function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, cancelEdit, categories, recurring }) {
   const [date, setDate] = useState(localDateStr());
   const [type, setType] = useState('keluar');
   const [category, setCategory] = useState(categories.keluar[0] || '');
@@ -347,10 +352,44 @@ function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, can
     [transactions]
   );
 
+  const missingRecurring = useMemo(() => {
+    const thisMonth = localDateStr().slice(0, 7);
+    const recordedThisMonth = new Set(
+      transactions.filter((t) => t.jenis === 'keluar' && t.tanggal.slice(0, 7) === thisMonth).map((t) => t.kategori)
+    );
+    return recurring.filter((cat) => categories.keluar.includes(cat) && !recordedThisMonth.has(cat));
+  }, [transactions, recurring, categories]);
+
+  const pickMissingCategory = (cat) => {
+    setType('keluar');
+    setCategory(cat);
+  };
+
   const amountColor = type === 'masuk' ? C.income : C.expense;
 
   return (
     <div className="px-4 pb-8">
+      {missingRecurring.length > 0 && (
+        <div className="rounded-lg px-3 py-2.5 mb-4 text-sm" style={{ backgroundColor: C.purple + '14', border: `1px solid ${C.purple}40` }}>
+          <div className="flex items-center gap-1.5 mb-1.5" style={{ color: C.ink }}>
+            <span>🔔</span>
+            <span className="font-medium">Belum tercatat bulan ini</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {missingRecurring.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => pickMissingCategory(cat)}
+                className="text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: C.paper, border: `1px solid ${C.purple}55`, color: C.purple }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {editingTx && (
         <div className="flex items-center justify-between rounded-lg px-3 py-2 mb-4 text-sm" style={{ backgroundColor: C.purple + '22', color: C.ink }}>
           <span>Mengedit catatan</span>
@@ -460,7 +499,7 @@ function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, can
 
       <button
         onClick={submit}
-        className="w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
+        className="w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.99] transition-transform shadow-md"
         style={{ backgroundColor: C.blue, color: '#fff' }}
       >
         <Plus size={16} /> {editingTx ? 'Simpan Perubahan' : 'Simpan Catatan'}
@@ -470,8 +509,9 @@ function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, can
       <div className="mt-8">
         <div className="text-sm font-medium mb-3" style={{ color: C.ink }}>Catatan Hari Ini</div>
         {todayList.length === 0 ? (
-          <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
-            Belum ada catatan hari ini. Yuk catat transaksi pertama.
+          <div className="rounded-lg px-4 py-8 text-center" style={{ backgroundColor: C.card, border: `1px dashed ${C.hair}` }}>
+            <div className="text-2xl mb-2">🧾</div>
+            <div className="text-sm" style={{ color: C.inkSoft }}>Belum ada catatan hari ini. Yuk catat transaksi pertama.</div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -496,7 +536,12 @@ function CatatTab({ user, transactions, onSave, onEdit, onDelete, editingTx, can
 /* ---------------------------------------------------------
    Baris transaksi (dipakai di beberapa tab)
 --------------------------------------------------------- */
-function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancelDelete }) {
+function formatDateShort(dateStr) {
+  const d = parseDateStr(dateStr);
+  return `${d.getDate()} ${BULAN[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
+}
+
+function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancelDelete, showDate }) {
   const color = t.jenis === 'masuk' ? C.income : C.expense;
   if (confirming) {
     return (
@@ -510,9 +555,10 @@ function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancel
     );
   }
   return (
-    <div className="flex items-center justify-between rounded-lg px-4 py-3" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+    <div className="flex items-center justify-between rounded-lg px-4 py-3 shadow-sm" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
+          {showDate && <span className="text-[11px]" style={{ color: C.inkSoft }}>{formatDateShort(t.tanggal)}</span>}
           <span className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.kategori}</span>
           <UserTag user={t.oleh} />
         </div>
@@ -554,17 +600,17 @@ function SummaryBar({ masuk, keluar }) {
   const saldo = masuk - keluar;
   return (
     <div className="grid grid-cols-3 gap-2 mb-5">
-      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="rounded-lg px-3 py-2.5 shadow-sm" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
         <div className="text-[10px] mb-0.5" style={{ color: C.inkSoft }}>Masuk</div>
-        <div className="text-sm font-medium" style={{ color: C.income, fontFamily: "'Fraunces', serif" }}>{formatRupiah(masuk)}</div>
+        <div className="text-base font-semibold" style={{ color: C.income, fontFamily: "'Fraunces', serif" }}>{formatRupiah(masuk)}</div>
       </div>
-      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="rounded-lg px-3 py-2.5 shadow-sm" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
         <div className="text-[10px] mb-0.5" style={{ color: C.inkSoft }}>Keluar</div>
-        <div className="text-sm font-medium" style={{ color: C.expense, fontFamily: "'Fraunces', serif" }}>{formatRupiah(keluar)}</div>
+        <div className="text-base font-semibold" style={{ color: C.expense, fontFamily: "'Fraunces', serif" }}>{formatRupiah(keluar)}</div>
       </div>
-      <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: C.blue }}>
+      <div className="rounded-lg px-3 py-2.5 shadow-md" style={{ backgroundColor: C.blue }}>
         <div className="text-[10px] mb-0.5 text-white opacity-70">Selisih</div>
-        <div className="text-sm font-medium text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(saldo)}</div>
+        <div className="text-base font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(saldo)}</div>
       </div>
     </div>
   );
@@ -615,8 +661,9 @@ function HarianTab({ transactions, onEdit, onDelete, date, setDate }) {
       <SummaryBar masuk={masuk} keluar={keluar} />
 
       {list.length === 0 ? (
-        <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
-          Tidak ada catatan pada tanggal ini.
+        <div className="rounded-lg px-4 py-8 text-center" style={{ backgroundColor: C.card, border: `1px dashed ${C.hair}` }}>
+          <div className="text-2xl mb-2">🧾</div>
+          <div className="text-sm" style={{ color: C.inkSoft }}>Tidak ada catatan pada tanggal ini.</div>
         </div>
       ) : (
         <div className="space-y-2">
@@ -624,6 +671,88 @@ function HarianTab({ transactions, onEdit, onDelete, date, setDate }) {
             <TxRow
               key={t.id}
               t={t}
+              confirming={confirmDeleteId === t.id}
+              onEdit={() => onEdit(t)}
+              onDeleteClick={() => setConfirmDeleteId(t.id)}
+              onConfirmDelete={() => { onDelete(t.id); setConfirmDeleteId(null); }}
+              onCancelDelete={() => setConfirmDeleteId(null)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Tab: Cari
+--------------------------------------------------------- */
+function SearchTab({ transactions, onEdit, onDelete }) {
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('Semua');
+  const [filter, setFilter] = useState('Gabungan');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return transactions
+      .filter((t) => (filter === 'Gabungan' || t.oleh === filter))
+      .filter((t) => (type === 'Semua' || t.jenis === type))
+      .filter((t) => t.kategori.toLowerCase().includes(q) || (t.catatan || '').toLowerCase().includes(q))
+      .sort((a, b) => b.dibuatPada - a.dibuatPada);
+  }, [transactions, query, type, filter]);
+
+  return (
+    <div className="px-4 pb-8">
+      <div className="mt-2 mb-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Cari kategori atau catatan..."
+          className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+          style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+          autoFocus
+        />
+      </div>
+
+      <div className="flex gap-2 mb-2 flex-wrap">
+        {['Semua', 'masuk', 'keluar'].map((t) => {
+          const active = type === t;
+          const label = t === 'Semua' ? 'Semua' : t === 'masuk' ? 'Pemasukan' : 'Pengeluaran';
+          return (
+            <button
+              key={t}
+              onClick={() => setType(t)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{ backgroundColor: active ? C.blue : C.card, color: active ? '#fff' : C.blue, border: `1px solid ${C.blue}` }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <FilterChips value={filter} onChange={setFilter} />
+
+      {query.trim() === '' ? (
+        <div className="rounded-lg px-4 py-8 text-center" style={{ backgroundColor: C.card, border: `1px dashed ${C.hair}` }}>
+          <div className="text-2xl mb-2">🔍</div>
+          <div className="text-sm" style={{ color: C.inkSoft }}>Ketik kata kunci untuk mencari catatan lama.</div>
+        </div>
+      ) : results.length === 0 ? (
+        <div className="rounded-lg px-4 py-8 text-center" style={{ backgroundColor: C.card, border: `1px dashed ${C.hair}` }}>
+          <div className="text-2xl mb-2">🗂️</div>
+          <div className="text-sm" style={{ color: C.inkSoft }}>Tidak ditemukan catatan yang cocok.</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {results.map((t) => (
+            <TxRow
+              key={t.id}
+              t={t}
+              showDate
               confirming={confirmDeleteId === t.id}
               onEdit={() => onEdit(t)}
               onDeleteClick={() => setConfirmDeleteId(t.id)}
@@ -730,10 +859,114 @@ function ContributionBar({ label, abiVal, umiVal }) {
   );
 }
 
+const PIE_PALETTE = [C.blue, C.expense, C.purple, C.income, '#5B6FD1', '#F0A8A0', '#B694ED', '#6FCB94'];
+
+function DonutChart({ items }) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  if (total <= 0) return null;
+  const size = 148;
+  const r = 54;
+  const strokeWidth = 24;
+  const circumference = 2 * Math.PI * r;
+  let offsetAcc = 0;
+
+  return (
+    <div className="flex items-center gap-4">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.hair} strokeWidth={strokeWidth} />
+        {items.map((item, i) => {
+          const frac = item.value / total;
+          const dash = frac * circumference;
+          const seg = (
+            <circle
+              key={item.label}
+              cx={size / 2} cy={size / 2} r={r} fill="none"
+              stroke={PIE_PALETTE[i % PIE_PALETTE.length]}
+              strokeWidth={strokeWidth}
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={-offsetAcc}
+            />
+          );
+          offsetAcc += dash;
+          return seg;
+        })}
+      </svg>
+      <div className="flex-1 min-w-0 space-y-1.5">
+        {items.slice(0, 6).map((item, i) => (
+          <div key={item.label} className="flex items-center gap-1.5 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_PALETTE[i % PIE_PALETTE.length] }} />
+            <span className="truncate flex-1" style={{ color: C.ink }}>{item.label}</span>
+            <span className="flex-shrink-0" style={{ color: C.inkSoft }}>{Math.round((item.value / total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BudgetProgress({ budgets, spentByCategory }) {
+  const entries = Object.entries(budgets).filter(([, limit]) => limit > 0);
+  if (entries.length === 0) return null;
+  return (
+    <div className="rounded-lg p-3 mb-5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="text-xs font-medium mb-3" style={{ color: C.inkSoft }}>Anggaran Bulan Ini</div>
+      <div className="space-y-3">
+        {entries.map(([cat, limit]) => {
+          const spent = spentByCategory[cat] || 0;
+          const pct = Math.min(100, (spent / limit) * 100);
+          const over = spent > limit;
+          return (
+            <div key={cat}>
+              <div className="flex justify-between text-xs mb-1">
+                <span style={{ color: C.ink }}>{cat}</span>
+                <span style={{ color: over ? C.expense : C.inkSoft }}>
+                  {formatRupiah(spent)} / {formatRupiah(limit)}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full" style={{ backgroundColor: C.hair + '80' }}>
+                <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: over ? C.expense : C.income }} />
+              </div>
+              {over && <div className="text-[10px] mt-0.5" style={{ color: C.expense }}>Lewat {formatRupiah(spent - limit)}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SavingsGoalsProgress({ goals, transactions }) {
+  if (goals.length === 0) return null;
+  return (
+    <div className="rounded-lg p-3 mb-5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+      <div className="text-xs font-medium mb-0.5" style={{ color: C.inkSoft }}>Target Tabungan</div>
+      <div className="text-[10px] mb-3" style={{ color: C.inkSoft }}>Akumulasi sepanjang waktu</div>
+      <div className="space-y-3">
+        {goals.map((g) => {
+          const saved = sumBy(transactions, (t) => t.jenis === 'keluar' && t.kategori === g.category);
+          const pct = Math.min(100, (saved / g.target) * 100);
+          const done = saved >= g.target;
+          return (
+            <div key={g.id}>
+              <div className="flex justify-between text-xs mb-1">
+                <span style={{ color: C.ink }}>{g.name} {done && '🎉'}</span>
+                <span style={{ color: C.inkSoft }}>{formatRupiah(saved)} / {formatRupiah(g.target)}</span>
+              </div>
+              <div className="h-1.5 rounded-full" style={{ backgroundColor: C.hair + '80' }}>
+                <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: C.income }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------
    Tab: Rekap Bulanan
 --------------------------------------------------------- */
-function BulananTab({ transactions, onPickDay }) {
+function BulananTab({ transactions, onPickDay, budgets, goals }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -790,6 +1023,14 @@ function BulananTab({ transactions, onPickDay }) {
   const keluarGabungan = sumBy(monthAll, (t) => t.jenis === 'keluar');
   const closingBalance = openingBalance + masukGabungan - keluarGabungan;
 
+  const spentByCategory = useMemo(() => {
+    const map = {};
+    monthAll.filter((t) => t.jenis === 'keluar').forEach((t) => {
+      map[t.kategori] = (map[t.kategori] || 0) + t.jumlah;
+    });
+    return map;
+  }, [monthAll]);
+
   return (
     <div className="px-4 pb-8">
       <div className="flex items-center justify-between mb-4 mt-2">
@@ -798,17 +1039,19 @@ function BulananTab({ transactions, onPickDay }) {
         <button onClick={() => shiftMonth(1)} className="p-2" style={{ color: C.blue }}><ChevronRight size={18} /></button>
       </div>
 
-      <div className="rounded-lg p-4 mb-4 grid grid-cols-2 gap-3" style={{ backgroundColor: C.blue }}>
+      <div className="rounded-lg p-4 mb-4 grid grid-cols-2 gap-3 shadow-md" style={{ backgroundColor: C.blue }}>
         <div>
           <div className="text-[10px] mb-1" style={{ color: '#FFFFFFB3' }}>Saldo Awal Bulan</div>
-          <div className="text-lg font-medium text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(openingBalance)}</div>
+          <div className="text-xl font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(openingBalance)}</div>
         </div>
         <div>
           <div className="text-[10px] mb-1" style={{ color: '#FFFFFFB3' }}>Saldo Akhir Bulan</div>
-          <div className="text-lg font-medium text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(closingBalance)}</div>
+          <div className="text-xl font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>{formatRupiah(closingBalance)}</div>
         </div>
         <div className="col-span-2 text-[10px]" style={{ color: '#FFFFFFB3' }}>Gabungan seluruh kas keluarga, tidak terpengaruh filter di bawah</div>
       </div>
+
+      <SavingsGoalsProgress goals={goals} transactions={transactions} />
 
       <FilterChips value={filter} onChange={setFilter} />
 
@@ -817,10 +1060,19 @@ function BulananTab({ transactions, onPickDay }) {
       <SummaryBar masuk={masuk} keluar={keluar} />
 
       {filter === 'Gabungan' && (monthAll.length > 0) && (
-        <div className="rounded-lg p-3 mb-5" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+        <div className="rounded-lg p-3 mb-5 shadow-sm" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
           <div className="text-xs font-medium mb-3" style={{ color: C.inkSoft }}>Kontribusi Abi &amp; Umi</div>
           <ContributionBar label="Pemasukan" abiVal={abiMasuk} umiVal={umiMasuk} />
           <ContributionBar label="Pengeluaran" abiVal={abiKeluar} umiVal={umiKeluar} />
+        </div>
+      )}
+
+      <BudgetProgress budgets={budgets} spentByCategory={spentByCategory} />
+
+      {pengeluaranBreakdown.length > 0 && (
+        <div className="rounded-lg p-3 mb-5 shadow-sm" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+          <div className="text-xs font-medium mb-3" style={{ color: C.inkSoft }}>Proporsi Pengeluaran</div>
+          <DonutChart items={pengeluaranBreakdown} />
         </div>
       )}
 
@@ -828,8 +1080,9 @@ function BulananTab({ transactions, onPickDay }) {
       <BreakdownList title="Rincian Pemasukan" items={pemasukanBreakdown} color={C.income} />
 
       {list.length === 0 && (
-        <div className="text-sm rounded-lg px-4 py-6 text-center" style={{ backgroundColor: C.card, color: C.inkSoft, border: `1px dashed ${C.hair}` }}>
-          Belum ada catatan pada bulan ini.
+        <div className="rounded-lg px-4 py-8 text-center" style={{ backgroundColor: C.card, border: `1px dashed ${C.hair}` }}>
+          <div className="text-2xl mb-2">📅</div>
+          <div className="text-sm" style={{ color: C.inkSoft }}>Belum ada catatan pada bulan ini.</div>
         </div>
       )}
     </div>
@@ -900,7 +1153,7 @@ function DataSourceSection({ sheetUrl, syncStatus, syncMsg, onConnectSheet, onDi
   );
 }
 
-function CategoryManager({ categories, onSave }) {
+function CategoryManager({ categories, onSave, recurring, onSaveRecurring, budgets, onSaveBudgets }) {
   const [type, setType] = useState('keluar');
   const [newCat, setNewCat] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
@@ -931,17 +1184,42 @@ function CategoryManager({ categories, onSave }) {
       setError('Nama kategori sudah dipakai.');
       return;
     }
+    const oldName = list[editingIndex];
     const next = [...list];
     next[editingIndex] = val;
     onSave({ ...categories, [type]: next });
+    // Ikut ganti nama di daftar rutin & anggaran supaya tidak jadi anak hilang
+    if (type === 'keluar' && oldName !== val) {
+      if (recurring.includes(oldName)) onSaveRecurring(recurring.map((c) => (c === oldName ? val : c)));
+      if (budgets[oldName] !== undefined) {
+        const nb = { ...budgets };
+        nb[val] = nb[oldName];
+        delete nb[oldName];
+        onSaveBudgets(nb);
+      }
+    }
     setEditingIndex(null);
     setError('');
   };
 
   const deleteCategory = (i) => {
     if (list.length <= 1) { setError('Minimal harus ada 1 kategori.'); return; }
+    const removed = list[i];
     onSave({ ...categories, [type]: list.filter((_, idx) => idx !== i) });
+    if (type === 'keluar') {
+      if (recurring.includes(removed)) onSaveRecurring(recurring.filter((c) => c !== removed));
+      if (budgets[removed] !== undefined) {
+        const nb = { ...budgets };
+        delete nb[removed];
+        onSaveBudgets(nb);
+      }
+    }
     setError('');
+  };
+
+  const toggleRecurring = (cat) => {
+    if (recurring.includes(cat)) onSaveRecurring(recurring.filter((c) => c !== cat));
+    else onSaveRecurring([...recurring, cat]);
   };
 
   return (
@@ -963,6 +1241,9 @@ function CategoryManager({ categories, onSave }) {
           </button>
         ))}
       </div>
+      {type === 'keluar' && (
+        <div className="text-[11px] mb-2" style={{ color: C.inkSoft }}>Tandai lonceng 🔔 pada tagihan rutin bulanan supaya diingatkan kalau belum dicatat.</div>
+      )}
 
       <div className="space-y-2 mb-3">
         {list.length === 0 && (
@@ -990,6 +1271,15 @@ function CategoryManager({ categories, onSave }) {
                 </>
               ) : (
                 <>
+                  {type === 'keluar' && (
+                    <button
+                      onClick={() => toggleRecurring(cat)}
+                      title={recurring.includes(cat) ? 'Kategori rutin — klik untuk lepas' : 'Tandai sebagai kategori rutin'}
+                      style={{ opacity: recurring.includes(cat) ? 1 : 0.3 }}
+                    >
+                      🔔
+                    </button>
+                  )}
                   <button onClick={() => startEdit(i)} style={{ color: C.inkSoft }}><Pencil size={13} /></button>
                   <button onClick={() => deleteCategory(i)} style={{ color: C.inkSoft }}><Trash2 size={13} /></button>
                 </>
@@ -1018,7 +1308,131 @@ function CategoryManager({ categories, onSave }) {
   );
 }
 
-function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncStatus, syncMsg, onConnectSheet, onDisconnectSheet, onPullFromSheet, onPushToSheet, categories, onSaveCategories }) {
+function BudgetManager({ categories, budgets, onSave }) {
+  const [amounts, setAmounts] = useState({});
+
+  const getDisplay = (cat) => {
+    if (amounts[cat] !== undefined) return amounts[cat];
+    return budgets[cat] ? String(budgets[cat]) : '';
+  };
+
+  const handleChange = (cat, raw) => {
+    const digits = raw.replace(/[^0-9]/g, '');
+    setAmounts((a) => ({ ...a, [cat]: digits }));
+  };
+
+  const handleBlur = (cat) => {
+    const digits = amounts[cat];
+    if (digits === undefined) return;
+    const next = { ...budgets };
+    if (!digits || Number(digits) === 0) delete next[cat];
+    else next[cat] = Number(digits);
+    onSave(next);
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Anggaran Bulanan per Kategori</div>
+      <div className="text-[11px] mb-3" style={{ color: C.inkSoft }}>Kosongkan / isi 0 kalau kategori itu tidak perlu dibatasi.</div>
+      <div className="space-y-2">
+        {categories.keluar.map((cat) => (
+          <div key={cat} className="flex items-center gap-2">
+            <span className="text-xs flex-1 truncate" style={{ color: C.ink }}>{cat}</span>
+            <div className="flex items-center rounded-lg px-2" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+              <span className="text-xs mr-1" style={{ color: C.inkSoft }}>Rp</span>
+              <input
+                inputMode="numeric"
+                value={getDisplay(cat) ? Number(getDisplay(cat)).toLocaleString('id-ID') : ''}
+                onChange={(e) => handleChange(cat, e.target.value)}
+                onBlur={() => handleBlur(cat)}
+                placeholder="0"
+                className="w-24 bg-transparent outline-none text-xs py-1.5 text-right"
+                style={{ color: C.ink }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SavingsGoalManager({ categories, goals, onSave }) {
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState(categories.keluar[0] || '');
+  const [target, setTarget] = useState('');
+  const [error, setError] = useState('');
+
+  const addGoal = () => {
+    const n = name.trim();
+    const t = Number(target);
+    if (!n) { setError('Nama target belum diisi.'); return; }
+    if (!category) { setError('Pilih kategori dulu.'); return; }
+    if (!t || t <= 0) { setError('Jumlah target harus lebih dari 0.'); return; }
+    onSave([...goals, { id: uid(), name: n, category, target: t }]);
+    setName(''); setTarget(''); setError('');
+  };
+
+  const deleteGoal = (id) => onSave(goals.filter((g) => g.id !== id));
+
+  return (
+    <div className="mb-6">
+      <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Target Tabungan</div>
+      <div className="text-[11px] mb-3" style={{ color: C.inkSoft }}>Progres dihitung dari total transaksi sepanjang waktu di kategori pilihan kamu.</div>
+
+      {goals.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {goals.map((g) => (
+            <div key={g.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+              <div className="min-w-0">
+                <div className="text-sm truncate" style={{ color: C.ink }}>{g.name}</div>
+                <div className="text-[11px] truncate" style={{ color: C.inkSoft }}>{g.category} · target {formatRupiah(g.target)}</div>
+              </div>
+              <button onClick={() => deleteGoal(g.id)} style={{ color: C.inkSoft }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <input
+          value={name}
+          onChange={(e) => { setName(e.target.value); setError(''); }}
+          placeholder="Nama target, mis. Dana Darurat"
+          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+        />
+        <div className="flex gap-2">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="flex-1 rounded-lg px-2 py-2 text-xs outline-none"
+            style={{ backgroundColor: C.card, border: `1px solid ${C.hair}`, color: C.ink }}
+          >
+            {categories.keluar.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <div className="flex items-center rounded-lg px-2" style={{ backgroundColor: C.card, border: `1px solid ${C.hair}` }}>
+            <span className="text-xs mr-1" style={{ color: C.inkSoft }}>Rp</span>
+            <input
+              inputMode="numeric"
+              value={target ? Number(target).toLocaleString('id-ID') : ''}
+              onChange={(e) => { setTarget(e.target.value.replace(/[^0-9]/g, '')); setError(''); }}
+              placeholder="Target"
+              className="w-24 bg-transparent outline-none text-xs py-1.5"
+              style={{ color: C.ink }}
+            />
+          </div>
+        </div>
+        {error && <div className="text-xs" style={{ color: C.expense }}>{error}</div>}
+        <button onClick={addGoal} className="w-full py-2 rounded-lg text-xs font-medium" style={{ backgroundColor: C.blue, color: '#fff' }}>
+          Tambah Target
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncStatus, syncMsg, onConnectSheet, onDisconnectSheet, onPullFromSheet, onPushToSheet, categories, onSaveCategories, budgets, onSaveBudgets, recurring, onSaveRecurring, goals, onSaveGoals }) {
   const [who, setWho] = useState('Abi');
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -1037,7 +1451,7 @@ function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncS
 
   return (
     <div className="absolute inset-0 z-30 flex items-end justify-center" style={{ backgroundColor: '#00000055' }}>
-      <div className="w-full max-w-md rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto" style={{ backgroundColor: C.paper }}>
+      <div className="w-full max-w-md rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto shadow-2xl" style={{ backgroundColor: C.paper }}>
         <div className="flex items-center justify-between mb-4">
           <div className="text-base font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>Pengaturan</div>
           <button onClick={onClose} style={{ color: C.inkSoft }}><X size={20} /></button>
@@ -1053,7 +1467,18 @@ function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncS
           onPushToSheet={onPushToSheet}
         />
 
-        <CategoryManager categories={categories} onSave={onSaveCategories} />
+        <CategoryManager
+          categories={categories}
+          onSave={onSaveCategories}
+          recurring={recurring}
+          onSaveRecurring={onSaveRecurring}
+          budgets={budgets}
+          onSaveBudgets={onSaveBudgets}
+        />
+
+        <BudgetManager categories={categories} budgets={budgets} onSave={onSaveBudgets} />
+
+        <SavingsGoalManager categories={categories} goals={goals} onSave={onSaveGoals} />
 
         <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Ubah PIN</div>
         <div className="flex gap-2 mb-3">
@@ -1110,10 +1535,17 @@ function SettingsSheet({ pins, onChangePin, onClearAll, onClose, sheetUrl, syncS
 /* ---------------------------------------------------------
    App utama
 --------------------------------------------------------- */
+const DEFAULT_BUDGETS = {};
+const DEFAULT_RECURRING = [];
+const DEFAULT_GOALS = [];
+
 function App() {
   const [loading, setLoading] = useState(true);
   const [pins, setPins] = useState(DEFAULT_PINS);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [budgets, setBudgets] = useState(DEFAULT_BUDGETS);
+  const [recurring, setRecurring] = useState(DEFAULT_RECURRING);
+  const [goals, setGoals] = useState(DEFAULT_GOALS);
   const [transactions, setTransactions] = useState([]);
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [tab, setTab] = useState('catat');
@@ -1155,6 +1587,27 @@ function App() {
       } catch (e) { localCategories = DEFAULT_CATEGORIES; }
       if (!cancelled) setCategories(localCategories);
 
+      let localBudgets = DEFAULT_BUDGETS;
+      try {
+        const res = await window.storage.get('budgets', true);
+        localBudgets = res ? JSON.parse(res.value) : DEFAULT_BUDGETS;
+      } catch (e) { localBudgets = DEFAULT_BUDGETS; }
+      if (!cancelled) setBudgets(localBudgets);
+
+      let localRecurring = DEFAULT_RECURRING;
+      try {
+        const res = await window.storage.get('recurring', true);
+        localRecurring = res ? JSON.parse(res.value) : DEFAULT_RECURRING;
+      } catch (e) { localRecurring = DEFAULT_RECURRING; }
+      if (!cancelled) setRecurring(localRecurring);
+
+      let localGoals = DEFAULT_GOALS;
+      try {
+        const res = await window.storage.get('goals', true);
+        localGoals = res ? JSON.parse(res.value) : DEFAULT_GOALS;
+      } catch (e) { localGoals = DEFAULT_GOALS; }
+      if (!cancelled) setGoals(localGoals);
+
       if (url) {
         try {
           const remote = await sheetsGet(url);
@@ -1170,12 +1623,27 @@ function App() {
               setCategories(remote.categories);
               try { await window.storage.set('categories', JSON.stringify(remote.categories), true); } catch (e) {}
             }
+            if (remote.budgets) {
+              setBudgets(remote.budgets);
+              try { await window.storage.set('budgets', JSON.stringify(remote.budgets), true); } catch (e) {}
+            }
+            if (remote.recurring) {
+              setRecurring(remote.recurring);
+              try { await window.storage.set('recurring', JSON.stringify(remote.recurring), true); } catch (e) {}
+            }
+            if (remote.goals) {
+              setGoals(remote.goals);
+              try { await window.storage.set('goals', JSON.stringify(remote.goals), true); } catch (e) {}
+            }
             // Sheet baru / belum punya pengaturan -> unggah dari data lokal supaya perangkat lain ikut dapat
-            if (!remote.pins || !remote.categories) {
+            if (!remote.pins || !remote.categories || !remote.budgets || !remote.recurring || !remote.goals) {
               try {
                 await sheetsPostSettings(url, {
                   pins: remote.pins ? undefined : localPins,
                   categories: remote.categories ? undefined : localCategories,
+                  budgets: remote.budgets ? undefined : localBudgets,
+                  recurring: remote.recurring ? undefined : localRecurring,
+                  goals: remote.goals ? undefined : localGoals,
                 });
               } catch (e) {}
             }
@@ -1198,6 +1666,39 @@ function App() {
       try { await sheetsPostSettings(sheetUrl, { categories: next }); } catch (e) {
         setSyncStatus('error');
         setSyncMsg('Kategori tersimpan lokal, tapi gagal dikirim ke Google Sheet.');
+      }
+    }
+  }, [sheetUrl]);
+
+  const persistBudgets = useCallback(async (next) => {
+    setBudgets(next);
+    try { await window.storage.set('budgets', JSON.stringify(next), true); } catch (e) {}
+    if (sheetUrl) {
+      try { await sheetsPostSettings(sheetUrl, { budgets: next }); } catch (e) {
+        setSyncStatus('error');
+        setSyncMsg('Anggaran tersimpan lokal, tapi gagal dikirim ke Google Sheet.');
+      }
+    }
+  }, [sheetUrl]);
+
+  const persistRecurring = useCallback(async (next) => {
+    setRecurring(next);
+    try { await window.storage.set('recurring', JSON.stringify(next), true); } catch (e) {}
+    if (sheetUrl) {
+      try { await sheetsPostSettings(sheetUrl, { recurring: next }); } catch (e) {
+        setSyncStatus('error');
+        setSyncMsg('Kategori rutin tersimpan lokal, tapi gagal dikirim ke Google Sheet.');
+      }
+    }
+  }, [sheetUrl]);
+
+  const persistGoals = useCallback(async (next) => {
+    setGoals(next);
+    try { await window.storage.set('goals', JSON.stringify(next), true); } catch (e) {}
+    if (sheetUrl) {
+      try { await sheetsPostSettings(sheetUrl, { goals: next }); } catch (e) {
+        setSyncStatus('error');
+        setSyncMsg('Target tabungan tersimpan lokal, tapi gagal dikirim ke Google Sheet.');
       }
     }
   }, [sheetUrl]);
@@ -1229,19 +1730,20 @@ function App() {
       setTransactions(remote.transactions);
       try { await window.storage.set('transactions', JSON.stringify(remote.transactions), true); } catch (e) {}
 
-      if (remote.pins) {
-        setPins(remote.pins);
-        try { await window.storage.set('pins', JSON.stringify(remote.pins), true); } catch (e) {}
-      }
-      if (remote.categories) {
-        setCategories(remote.categories);
-        try { await window.storage.set('categories', JSON.stringify(remote.categories), true); } catch (e) {}
-      }
-      if (!remote.pins || !remote.categories) {
+      if (remote.pins) { setPins(remote.pins); try { await window.storage.set('pins', JSON.stringify(remote.pins), true); } catch (e) {} }
+      if (remote.categories) { setCategories(remote.categories); try { await window.storage.set('categories', JSON.stringify(remote.categories), true); } catch (e) {} }
+      if (remote.budgets) { setBudgets(remote.budgets); try { await window.storage.set('budgets', JSON.stringify(remote.budgets), true); } catch (e) {} }
+      if (remote.recurring) { setRecurring(remote.recurring); try { await window.storage.set('recurring', JSON.stringify(remote.recurring), true); } catch (e) {} }
+      if (remote.goals) { setGoals(remote.goals); try { await window.storage.set('goals', JSON.stringify(remote.goals), true); } catch (e) {} }
+
+      if (!remote.pins || !remote.categories || !remote.budgets || !remote.recurring || !remote.goals) {
         try {
           await sheetsPostSettings(url, {
             pins: remote.pins ? undefined : pins,
             categories: remote.categories ? undefined : categories,
+            budgets: remote.budgets ? undefined : budgets,
+            recurring: remote.recurring ? undefined : recurring,
+            goals: remote.goals ? undefined : goals,
           });
         } catch (e) {}
       }
@@ -1268,16 +1770,13 @@ function App() {
       const remote = await sheetsGet(sheetUrl);
       setTransactions(remote.transactions);
       try { await window.storage.set('transactions', JSON.stringify(remote.transactions), true); } catch (e) {}
-      if (remote.pins) {
-        setPins(remote.pins);
-        try { await window.storage.set('pins', JSON.stringify(remote.pins), true); } catch (e) {}
-      }
-      if (remote.categories) {
-        setCategories(remote.categories);
-        try { await window.storage.set('categories', JSON.stringify(remote.categories), true); } catch (e) {}
-      }
+      if (remote.pins) { setPins(remote.pins); try { await window.storage.set('pins', JSON.stringify(remote.pins), true); } catch (e) {} }
+      if (remote.categories) { setCategories(remote.categories); try { await window.storage.set('categories', JSON.stringify(remote.categories), true); } catch (e) {} }
+      if (remote.budgets) { setBudgets(remote.budgets); try { await window.storage.set('budgets', JSON.stringify(remote.budgets), true); } catch (e) {} }
+      if (remote.recurring) { setRecurring(remote.recurring); try { await window.storage.set('recurring', JSON.stringify(remote.recurring), true); } catch (e) {} }
+      if (remote.goals) { setGoals(remote.goals); try { await window.storage.set('goals', JSON.stringify(remote.goals), true); } catch (e) {} }
       setSyncStatus('connected');
-      setSyncMsg('Data terbaru (transaksi, PIN, kategori) berhasil ditarik dari Google Sheet.');
+      setSyncMsg('Data terbaru berhasil ditarik dari Google Sheet.');
     } catch (e) {
       setSyncStatus('error');
       setSyncMsg('Gagal menarik data dari Google Sheet.');
@@ -1289,9 +1788,9 @@ function App() {
     setSyncStatus('syncing');
     try {
       await sheetsPost(sheetUrl, { action: 'replaceAll', items: transactions });
-      await sheetsPostSettings(sheetUrl, { pins, categories });
+      await sheetsPostSettings(sheetUrl, { pins, categories, budgets, recurring, goals });
       setSyncStatus('connected');
-      setSyncMsg('Data lokal (transaksi, PIN, kategori) berhasil dikirim ke Google Sheet.');
+      setSyncMsg('Data lokal berhasil dikirim ke Google Sheet.');
     } catch (e) {
       setSyncStatus('error');
       setSyncMsg('Gagal mengirim data ke Google Sheet.');
@@ -1350,6 +1849,11 @@ function App() {
           40%, 60% { transform: translateX(8px); }
         }
         input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+        .tab-fade { animation: tabFadeIn .22s ease; }
+        @keyframes tabFadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
 
       <div className="max-w-md mx-auto relative min-h-[560px]">
@@ -1398,8 +1902,9 @@ function App() {
             <div className="flex px-4 gap-1 mb-2 pt-2" style={{ backgroundColor: C.paper, borderBottom: `1px solid ${C.hair}` }}>
               {[
                 { key: 'catat', label: 'Catat' },
-                { key: 'harian', label: 'Rekap Harian' },
-                { key: 'bulanan', label: 'Rekap Bulanan' },
+                { key: 'harian', label: 'Harian' },
+                { key: 'bulanan', label: 'Bulanan' },
+                { key: 'cari', label: 'Cari' },
               ].map((t) => {
                 const active = tab === t.key;
                 return (
@@ -1419,6 +1924,7 @@ function App() {
               })}
             </div>
 
+            <div key={tab} className="tab-fade">
             {tab === 'catat' && (
               <CatatTab
                 user={loggedInUser}
@@ -1429,6 +1935,7 @@ function App() {
                 editingTx={editingTx}
                 cancelEdit={() => setEditingTx(null)}
                 categories={categories}
+                recurring={recurring}
               />
             )}
             {tab === 'harian' && (
@@ -1444,8 +1951,18 @@ function App() {
               <BulananTab
                 transactions={transactions}
                 onPickDay={(ds) => { setHarianDate(ds); setTab('harian'); }}
+                budgets={budgets}
+                goals={goals}
               />
             )}
+            {tab === 'cari' && (
+              <SearchTab
+                transactions={transactions}
+                onEdit={(t) => { setEditingTx(t); setTab('catat'); }}
+                onDelete={handleDeleteTx}
+              />
+            )}
+            </div>
           </>
         )}
       </div>
@@ -1465,6 +1982,12 @@ function App() {
           onPushToSheet={handlePushToSheet}
           categories={categories}
           onSaveCategories={persistCategories}
+          budgets={budgets}
+          onSaveBudgets={persistBudgets}
+          recurring={recurring}
+          onSaveRecurring={persistRecurring}
+          goals={goals}
+          onSaveGoals={persistGoals}
         />
       )}
     </div>
