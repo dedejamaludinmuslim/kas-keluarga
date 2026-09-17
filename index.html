@@ -640,21 +640,12 @@ function HarianTab({ transactions, onEdit, onDelete, date, setDate }) {
 
   return (
     <div className="px-4 pb-8">
-      <div className="flex items-center justify-between mb-1 mt-2">
+      <div className="flex items-center justify-between mb-4 mt-2">
         <button onClick={() => shiftDay(-1)} className="p-2" style={{ color: C.blue }}><ChevronLeft size={18} /></button>
         <div className="text-center">
           <div className="text-sm font-medium" style={{ color: C.ink, fontFamily: "'Fraunces', serif" }}>{formatDateLong(date)}</div>
         </div>
         <button onClick={() => shiftDay(1)} className="p-2" style={{ color: C.blue }}><ChevronRight size={18} /></button>
-      </div>
-      <div className="flex justify-center mb-4">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="text-xs rounded-md px-2 py-1 outline-none"
-          style={{ border: `1px solid ${C.hair}`, color: C.inkSoft, backgroundColor: C.card }}
-        />
       </div>
 
       <FilterChips value={filter} onChange={setFilter} />
@@ -805,9 +796,17 @@ function MonthCalendar({ year, month, transactions, filter, onPickDay }) {
               key={i}
               onClick={() => onPickDay(ds)}
               className="flex flex-col items-center py-1 rounded-md"
-              style={{ backgroundColor: isToday ? C.blue + '14' : 'transparent' }}
             >
-              <span className="text-[11px]" style={{ color: isToday ? C.blue : C.ink, fontWeight: isToday ? 600 : 400 }}>{day}</span>
+              <span
+                className="text-[11px] w-5 h-5 flex items-center justify-center rounded-full"
+                style={{
+                  backgroundColor: isToday ? C.blue : 'transparent',
+                  color: isToday ? '#fff' : C.ink,
+                  fontWeight: isToday ? 600 : 400,
+                }}
+              >
+                {day}
+              </span>
               <span className="w-1.5 h-1.5 rounded-full mt-0.5" style={{ backgroundColor: dotColor }} />
             </button>
           );
