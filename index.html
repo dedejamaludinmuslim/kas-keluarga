@@ -61,6 +61,26 @@
 </head>
 <body>
 <div id="root"></div>
+<script>
+  // Service worker minimal (via Blob URL, tanpa file terpisah) supaya
+  // aplikasi memenuhi kriteria "installable" PWA di Chrome/Android.
+  if ('serviceWorker' in navigator) {
+    var swSource = [
+      "self.addEventListener('install', function(e){ self.skipWaiting(); });",
+      "self.addEventListener('activate', function(e){ self.clients.claim(); });",
+      "self.addEventListener('fetch', function(event){",
+      "  event.respondWith(",
+      "    fetch(event.request).catch(function(){ return caches.match(event.request); })",
+      "  );",
+      "});"
+    ].join('\n');
+    var swBlob = new Blob([swSource], { type: 'application/javascript' });
+    var swUrl = URL.createObjectURL(swBlob);
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(swUrl).catch(function () {});
+    });
+  }
+</script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback } = React;
 
@@ -584,7 +604,7 @@ function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancel
 
   if (confirming) {
     return (
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl p-3 text-xs bg-rose-50 border border-rose-200 shadow-sm gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl p-3 text-sm bg-rose-50 border border-rose-200 shadow-sm gap-2">
         <span className="font-semibold text-rose-800">Hapus catatan ini secara permanen?</span>
         <div className="flex gap-2 w-full sm:w-auto">
           <button onClick={onConfirmDelete} className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 text-white shadow-sm hover:bg-rose-700">Ya, Hapus</button>
@@ -594,22 +614,22 @@ function TxRow({ t, confirming, onEdit, onDeleteClick, onConfirmDelete, onCancel
     );
   }
   return (
-    <div className="group flex items-center justify-between rounded-xl py-2.5 px-3.5 bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-200">
+    <div className="group flex items-center justify-between rounded-xl px-3 py-2.5 bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-200">
       <div className="min-w-0 flex-1 pr-3">
-        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-sm font-bold text-slate-800 truncate">{t.kategori}</span>
           <UserTag user={t.oleh} size="sm" />
           {showDate && <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{formatDateShort(t.tanggal)}</span>}
         </div>
-        {t.catatan && <div className="text-[11px] font-medium text-slate-500 truncate">{t.catatan}</div>}
+        {t.catatan && <div className="text-xs font-medium text-slate-500 truncate mt-0.5">{t.catatan}</div>}
       </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <span className={`text-sm font-extrabold font-jakarta whitespace-nowrap ${amountColor}`}>
           {sign}{formatRupiah(t.jumlah)}
         </span>
         <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} className="p-1 bg-slate-50 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><Pencil size={13} /></button>
-          <button onClick={onDeleteClick} className="p-1 bg-slate-50 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"><Trash2 size={13} /></button>
+          <button onClick={onEdit} className="p-1 bg-slate-50 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><Pencil size={13} /></button>
+          <button onClick={onDeleteClick} className="p-1 bg-slate-50 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"><Trash2 size={13} /></button>
         </div>
       </div>
     </div>
@@ -1885,7 +1905,7 @@ function App() {
         ) : (
           <>
             {/* ---- STREAMING_CHUNK: Main App Layout & Header ---- */}
-            <div className="bg-black text-white px-6 pt-8 pb-10 rounded-b-[2rem] shadow-lg z-10 relative flex justify-between items-start">
+            <div className="bg-slate-900 text-white px-6 pt-8 pb-10 rounded-b-[2rem] shadow-lg z-10 relative flex justify-between items-start">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10 shadow-inner">
                   <Wallet size={24} className="text-blue-400" />
